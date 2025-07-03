@@ -145,10 +145,20 @@ public class SwiftAzureSpeechRecognitionPlugin: NSObject, FlutterPlugin {
         simpleRecognitionTasks[taskId] = SimpleRecognitionTask(task: task, isCanceled: false)
     }
     
-    private func simpleSpeechRecognitionWithAssessment(referenceText: String, phonemeAlphabet: String, granularity: SPXPronunciationAssessmentGranularity, enableMiscue: Bool, speechSubscriptionKey : String, serviceRegion : String, lang: String, timeoutMs: String, nBestPhonemeCount: Int?) {
+    private func simpleSpeechRecognitionWithAssessment(
+        referenceText: String,
+        phonemeAlphabet: String,
+        granularity: SPXPronunciationAssessmentGranularity,
+        enableMiscue: Bool,
+        speechSubscriptionKey : String,
+        serviceRegion : String,
+        lang: String,
+        timeoutMs: String,
+        nBestPhonemeCount: Int?
+    ) {
         print("Created new recognition task")
-        cancelActiveSimpleRecognitionTasks()
-        let taskId = UUID().uuidString;
+    cancelActiveSimpleRecognitionTasks()
+        let taskId = UUID().uuidString
         let task = Task {
             print("Started recognition with task ID \(taskId)")
             var speechConfig: SPXSpeechConfiguration?
@@ -156,12 +166,13 @@ public class SwiftAzureSpeechRecognitionPlugin: NSObject, FlutterPlugin {
             do {
                 let audioSession = AVAudioSession.sharedInstance()
                 // Request access to the microphone
-                try audioSession.setCategory(AVAudioSession.Category.record, mode: AVAudioSession.Mode.default, options: AVAudioSession.CategoryOptions.allowBluetooth)
+                try audioSession.setCategory(.record, mode: .default, options: [.allowBluetooth])
                 try audioSession.setActive(true)
                 print("Setting custom audio session")
-                // Initialize speech recognizer and specify correct subscription key and service region
+                // Initialize speech configuration
                 try speechConfig = SPXSpeechConfiguration(subscription: speechSubscriptionKey, region: serviceRegion)
-                try pronunciationAssessmentConfig = SPXPronunciationAssessmentConfiguration.init(
+                // Initialize pronunciation assessment configuration
+                try pronunciationAssessmentConfig = SPXPronunciationAssessmentConfiguration(
                     referenceText,
                     gradingSystem: SPXPronunciationAssessmentGradingSystem.hundredMark,
                     granularity: granularity,
@@ -170,63 +181,79 @@ public class SwiftAzureSpeechRecognitionPlugin: NSObject, FlutterPlugin {
                 print("error \(error) happened")
                 speechConfig = nil
             }
-            pronunciationAssessmentConfig?.phonemeAlphabet = phonemeAlphabet
             
-            if nBestPhonemeCount != nil {
-                pronunciationAssessmentConfig?.nbestPhonemeCount = nBestPhonemeCount!
+            pronunciationAssessmentConfig?.phonemeAlphabet = phonemeAlphabet
+            if let nBest = nBestPhonemeCount {
+                pronunciationAssessmentConfig?.nbestPhonemeCount = nBest
             }
             
             speechConfig?.speechRecognitionLanguage = lang
             speechConfig?.setPropertyTo(timeoutMs, by: SPXPropertyId.speechSegmentationSilenceTimeoutMs)
             
             let audioConfig = SPXAudioConfiguration()
-            let reco = try! SPXSpeechRecognizer(speechConfiguration: speechConfig!, audioConfiguration: audioConfig)
-            try! pronunciationAssessmentConfig?.apply(to: reco)
             
-            reco.addRecognizingEventHandler() {reco, evt in
-                if (self.simpleRecognitionTasks[taskId]?.isCanceled ?? false) { // Discard intermediate results if the task was cancelled
-                    print("Ignoring partial result. TaskID: \(taskId)")
-                }
-                else {
-                    print("Intermediate result: \(evt.result.text ?? "(no result)")\nTaskID: \(taskId)")
-                    // Extract speaker ID if available
+            do {
+                // Create conversation transcriber
+                let transcriber = try SPXConversationTranscriber(speechConfiguration: speechConfig!, audioConfiguration: audioConfig)
+                // Apply pronunciation assessment
+                try pronunciationAssessmentConfig?.apply(to: transcriber)
+                
+                transcriber.addRecognizingEventHandler() { [weak self] _, evt in
+                    guard let self = self else { return }
+                    if (self.simpleRecognitionTasks[taskId]?.isCanceled ?? false) {
+                        print("Ignoring partial result. TaskID: \(taskId)")
+                        return
+                    }
+                    let intermediateText = evt.result.text ?? "(no result)"
                     let speakerId = evt.result.speakerId ?? "unknown"
-                    print("Speaker ID: \(speakerId)")
-                    self.azureChannel.invokeMethod("speech.onSpeech", arguments: evt.result.text)
+                    print("Intermediate result: \(intermediateText)\nSpeaker ID: \(speakerId)\nTaskID: \(taskId)")
+                    self.azureChannel.invokeMethod("speech.onSpeech", arguments: intermediateText)
                 }
+                
+                try transcriber.startTranscribing()
+                
+                // Since this is a simple recognition, wait for one final recognized event then stop
+                transcriber.addRecognizedEventHandler() { [weak self] _, evt in
+                    guard let self = self else { return }
+                    let result = evt.result
+                    if Task.isCancelled {
+                        print("Ignoring final result. TaskID: \(taskId)")
+                        return
+                    }
+                    let finalText = result.text ?? "(no result)"
+                    let pronunciationAssessmentResultJson = result.properties?.getPropertyBy(SPXPropertyId.speechServiceResponseJsonResult)
+                    let speakerId = result.speakerId ?? "unknown"
+                    
+                    print("Final result: \(finalText)\nReason: \(result.reason.rawValue)\nSpeaker ID: \(speakerId)\nTaskID: \(taskId)")
+                    print("pronunciationAssessmentResultJson: \(pronunciationAssessmentResultJson ?? "(no result)")")
+                    
+                    if result.reason != SPXResultReason.recognizedSpeech {
+                        do {
+                            let cancellationDetails = try SPXCancellationDetails(fromCanceledRecognitionResult: result)
+                            print("Cancelled: \(cancellationDetails.description), \(cancellationDetails.errorDetails)\nTaskID: \(taskId)")
+                            print("Did you set the speech resource key and region values?")
+                        } catch {
+                            print("Error getting cancellation details: \(error)")
+                        }
+                        self.azureChannel.invokeMethod("speech.onFinalResponse", arguments: "")
+                        self.azureChannel.invokeMethod("speech.onAssessmentResult", arguments: "")
+                        self.azureChannel.invokeMethod("speech.onSpeakerId", arguments: "")
+                    }
+                    else {
+                        self.azureChannel.invokeMethod("speech.onFinalResponse", arguments: finalText)
+                        self.azureChannel.invokeMethod("speech.onAssessmentResult", arguments: pronunciationAssessmentResultJson)
+                        self.azureChannel.invokeMethod("speech.onSpeakerId", arguments: speakerId)
+                    }
+                    
+                    // Stop after first final result
+                    try? transcriber.stopTranscribing()
+                    self.simpleRecognitionTasks.removeValue(forKey: taskId)
+                }
+                
+            } catch {
+                print("Failed to create or start conversation transcriber: \(error)")
+                self.simpleRecognitionTasks.removeValue(forKey: taskId)
             }
-            
-            let result = try! reco.recognizeOnce()
-            if (Task.isCancelled) {
-                print("Ignoring final result. TaskID: \(taskId)")
-            } else {
-                print("Final result: \(result.text ?? "(no result)")\nReason: \(result.reason.rawValue)\nTaskID: \(taskId)")
-                let pronunciationAssessmentResultJson = result.properties?.getPropertyBy(SPXPropertyId.speechServiceResponseJsonResult)
-                print("pronunciationAssessmentResultJson: \(pronunciationAssessmentResultJson ?? "(no result)")")
-                
-                // Extract speaker ID from the result
-                let speakerId = result.speakerId ?? "unknown"
-                print("Final Speaker ID: \(speakerId)")
-                
-                if result.reason != SPXResultReason.recognizedSpeech {
-                    let cancellationDetails = try! SPXCancellationDetails(fromCanceledRecognitionResult: result)
-                    print("Cancelled: \(cancellationDetails.description), \(cancellationDetails.errorDetails)\nTaskID: \(taskId)")
-                    print("Did you set the speech resource key and region values?")
-                    self.azureChannel.invokeMethod("speech.onFinalResponse", arguments: "")
-                    self.azureChannel.invokeMethod("speech.onAssessmentResult", arguments: "")
-                    self.azureChannel.invokeMethod("speech.onSpeakerId", arguments: "")
-                }
-                else {
-                    let finalResponse: [String: Any] = [
-                        "text": result.text ?? "",
-                        "speakerId": speakerId
-                    ]
-                    self.azureChannel.invokeMethod("speech.onFinalResponse", arguments: finalResponse)
-                    self.azureChannel.invokeMethod("speech.onAssessmentResult", arguments: pronunciationAssessmentResultJson)
-                }
-                
-            }
-            self.simpleRecognitionTasks.removeValue(forKey: taskId)
         }
         simpleRecognitionTasks[taskId] = SimpleRecognitionTask(task: task, isCanceled: false)
     }
