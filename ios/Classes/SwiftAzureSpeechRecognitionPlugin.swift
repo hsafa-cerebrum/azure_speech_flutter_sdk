@@ -145,19 +145,9 @@ public class SwiftAzureSpeechRecognitionPlugin: NSObject, FlutterPlugin {
         simpleRecognitionTasks[taskId] = SimpleRecognitionTask(task: task, isCanceled: false)
     }
     
-    private func simpleSpeechRecognitionWithAssessment(
-        referenceText: String,
-        phonemeAlphabet: String,
-        granularity: SPXPronunciationAssessmentGranularity,
-        enableMiscue: Bool,
-        speechSubscriptionKey : String,
-        serviceRegion : String,
-        lang: String,
-        timeoutMs: String,
-        nBestPhonemeCount: Int?
-    ) {
+    private func simpleSpeechRecognitionWithAssessment(referenceText: String,phonemeAlphabet: String,granularity: SPXPronunciationAssessmentGranularity,enableMiscue: Bool,speechSubscriptionKey: String,serviceRegion: String,lang: String,timeoutMs: String, nBestPhonemeCount: Int?) {
         print("Created new recognition task")
-    cancelActiveSimpleRecognitionTasks()
+        cancelActiveSimpleRecognitionTasks()
         let taskId = UUID().uuidString
         let task = Task {
             print("Started recognition with task ID \(taskId)")
@@ -165,74 +155,75 @@ public class SwiftAzureSpeechRecognitionPlugin: NSObject, FlutterPlugin {
             var pronunciationAssessmentConfig: SPXPronunciationAssessmentConfiguration?
             do {
                 let audioSession = AVAudioSession.sharedInstance()
-                // Request access to the microphone
-                try audioSession.setCategory(.record, mode: .default, options: [.allowBluetooth])
+                try audioSession.setCategory(.record, mode: .default, options: .allowBluetooth)
                 try audioSession.setActive(true)
                 print("Setting custom audio session")
-                // Initialize speech configuration
-                try speechConfig = SPXSpeechConfiguration(subscription: speechSubscriptionKey, region: serviceRegion)
-                // Initialize pronunciation assessment configuration
-                try pronunciationAssessmentConfig = SPXPronunciationAssessmentConfiguration(
+
+                speechConfig = try SPXSpeechConfiguration(subscription: speechSubscriptionKey, region: serviceRegion)
+
+                pronunciationAssessmentConfig = try SPXPronunciationAssessmentConfiguration(
                     referenceText,
-                    gradingSystem: SPXPronunciationAssessmentGradingSystem.hundredMark,
+                    gradingSystem: .hundredMark,
                     granularity: granularity,
                     enableMiscue: enableMiscue)
-            } catch {
-                print("error \(error) happened")
+
+                pronunciationAssessmentConfig?.phonemeAlphabet = phonemeAlphabet
+                if let nBest = nBestPhonemeCount {
+                    pronunciationAssessmentConfig?.nbestPhonemeCount = nBest
+                }
+
+                speechConfig?.speechRecognitionLanguage = lang
+                speechConfig?.setPropertyTo(timeoutMs, by: SPXPropertyId.speechSegmentationSilenceTimeoutMs)
+            }
+            catch {
+                print("Error setting up speech config or audio session: \(error)")
                 speechConfig = nil
             }
-            
-            pronunciationAssessmentConfig?.phonemeAlphabet = phonemeAlphabet
-            if let nBest = nBestPhonemeCount {
-                pronunciationAssessmentConfig?.nbestPhonemeCount = nBest
+
+            guard let config = speechConfig,
+                let assessmentConfig = pronunciationAssessmentConfig else {
+                print("Failed to create speech or assessment config")
+                return
             }
-            
-            speechConfig?.speechRecognitionLanguage = lang
-            speechConfig?.setPropertyTo(timeoutMs, by: SPXPropertyId.speechSegmentationSilenceTimeoutMs)
-            
+
             let audioConfig = SPXAudioConfiguration()
-            
+
             do {
-                // Create conversation transcriber
-                let transcriber = try SPXConversationTranscriber(speechConfiguration: speechConfig!, audioConfiguration: audioConfig)
-                // Apply pronunciation assessment
-                try pronunciationAssessmentConfig?.apply(to: transcriber)
-                
-                transcriber.addRecognizingEventHandler() { [weak self] _, evt in
-                    guard let self = self else { return }
-                    if (self.simpleRecognitionTasks[taskId]?.isCanceled ?? false) {
+                // Use ConversationTranscriber for speaker diarization
+                let transcriber = try SPXConversationTranscriber(speechConfiguration: config, audioConfiguration: audioConfig)
+                try assessmentConfig.apply(to: transcriber)
+
+                transcriber.recognizing = { _, evt in
+                    if self.simpleRecognitionTasks[taskId]?.isCanceled ?? false {
                         print("Ignoring partial result. TaskID: \(taskId)")
                         return
                     }
-                    let intermediateText = evt.result.text ?? "(no result)"
                     let speakerId = evt.result.speakerId ?? "unknown"
-                    print("Intermediate result: \(intermediateText)\nSpeaker ID: \(speakerId)\nTaskID: \(taskId)")
-                    self.azureChannel.invokeMethod("speech.onSpeech", arguments: intermediateText)
+                    print("Intermediate result: \(evt.result.text ?? "(no result)"), Speaker ID: \(speakerId)")
+                    self.azureChannel.invokeMethod("speech.onSpeech", arguments: evt.result.text)
                 }
-                
-                try transcriber.startTranscribing()
-                
-                // Since this is a simple recognition, wait for one final recognized event then stop
-                transcriber.addRecognizedEventHandler() { [weak self] _, evt in
-                    guard let self = self else { return }
-                    let result = evt.result
+
+                transcriber.recognized = { _, evt in
                     if Task.isCancelled {
                         print("Ignoring final result. TaskID: \(taskId)")
                         return
                     }
-                    let finalText = result.text ?? "(no result)"
-                    let pronunciationAssessmentResultJson = result.properties?.getPropertyBy(SPXPropertyId.speechServiceResponseJsonResult)
+
+                    let result = evt.result
                     let speakerId = result.speakerId ?? "unknown"
-                    
-                    print("Final result: \(finalText)\nReason: \(result.reason.rawValue)\nSpeaker ID: \(speakerId)\nTaskID: \(taskId)")
+
+                    print("Final result: \(result.text ?? "(no result)"), Reason: \(result.reason.rawValue), Speaker ID: \(speakerId)")
+
+                    let pronunciationAssessmentResultJson = result.properties?.getPropertyBy(SPXPropertyId.speechServiceResponseJsonResult)
                     print("pronunciationAssessmentResultJson: \(pronunciationAssessmentResultJson ?? "(no result)")")
-                    
+
                     if result.reason != SPXResultReason.recognizedSpeech {
                         do {
                             let cancellationDetails = try SPXCancellationDetails(fromCanceledRecognitionResult: result)
                             print("Cancelled: \(cancellationDetails.description), \(cancellationDetails.errorDetails)\nTaskID: \(taskId)")
                             print("Did you set the speech resource key and region values?")
-                        } catch {
+                        }
+                        catch {
                             print("Error getting cancellation details: \(error)")
                         }
                         self.azureChannel.invokeMethod("speech.onFinalResponse", arguments: "")
@@ -240,23 +231,39 @@ public class SwiftAzureSpeechRecognitionPlugin: NSObject, FlutterPlugin {
                         self.azureChannel.invokeMethod("speech.onSpeakerId", arguments: "")
                     }
                     else {
-                        self.azureChannel.invokeMethod("speech.onFinalResponse", arguments: finalText)
+                        let finalResponse: [String: Any] = [
+                            "text": result.text ?? "",
+                            "speakerId": speakerId
+                        ]
+                        self.azureChannel.invokeMethod("speech.onFinalResponse", arguments: finalResponse)
                         self.azureChannel.invokeMethod("speech.onAssessmentResult", arguments: pronunciationAssessmentResultJson)
-                        self.azureChannel.invokeMethod("speech.onSpeakerId", arguments: speakerId)
                     }
-                    
-                    // Stop after first final result
-                    try? transcriber.stopTranscribing()
+
+                    // Remove task after completion
                     self.simpleRecognitionTasks.removeValue(forKey: taskId)
+
+                    // Stop transcriber after recognition done
+                    do {
+                        try transcriber.stopTranscribing()
+                    } catch {
+                        print("Error stopping transcriber: \(error)")
+                    }
                 }
-                
+
+                // Save the task info so you can cancel if needed
+                simpleRecognitionTasks[taskId] = SimpleRecognitionTask(task: Task {}, isCanceled: false)
+
+                // Start transcription
+                try transcriber.startTranscribing()
+                print("Started conversation transcriber")
+
             } catch {
-                print("Failed to create or start conversation transcriber: \(error)")
-                self.simpleRecognitionTasks.removeValue(forKey: taskId)
+                print("Error creating or starting transcriber: \(error)")
             }
         }
         simpleRecognitionTasks[taskId] = SimpleRecognitionTask(task: task, isCanceled: false)
     }
+
     
     private func stopContinuousStream(flutterResult: FlutterResult) {
         if (continousListeningStarted) {
