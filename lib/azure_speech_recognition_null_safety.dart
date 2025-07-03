@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/services.dart';
 
 typedef void StringResultHandler(String text);
+typedef void FinalTranscriptionHandler(Map<String, dynamic> data);
 
 class AzureSpeechRecognition {
   static const MethodChannel _channel =
@@ -47,7 +48,7 @@ class AzureSpeechRecognition {
 
   StringResultHandler? exceptionHandler;
   StringResultHandler? recognitionResultHandler;
-  StringResultHandler? finalTranscriptionHandler;
+  FinalTranscriptionHandler? finalTranscriptionHandler;
   StringResultHandler? assessmentResultHandler;
   VoidCallback? recognitionStartedHandler;
   VoidCallback? startRecognitionHandler;
@@ -86,7 +87,7 @@ class AzureSpeechRecognition {
       recognitionResultHandler = handler;
 
   /// final transcription is passed here
-  void setFinalTranscription(StringResultHandler handler) =>
+  void setFinalTranscription(FinalTranscriptionHandler handler) =>
       finalTranscriptionHandler = handler;
 
   void setAssessmentResult(StringResultHandler handler) =>
