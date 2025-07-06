@@ -13,7 +13,8 @@ struct SimpleRecognitionTask {
 public class SwiftAzureSpeechRecognitionPlugin: NSObject, FlutterPlugin {
     var azureChannel: FlutterMethodChannel
     var continousListeningStarted: Bool = false
-    var continousSpeechRecognizer: SPXSpeechRecognizer? = nil
+    // var continousSpeechRecognizer: SPXSpeechRecognizer? = nil
+    var continousSpeechRecognizer: SPXConversationTranscriber? = nil
     var simpleRecognitionTasks: Dictionary<String, SimpleRecognitionTask> = [:]
     var transcriber: SPXConversationTranscriber? = nil
     var audioConfig: SPXAudioConfiguration? = nil
