@@ -22,8 +22,9 @@ class _ContinuousRecognitionScreenState
 
     AzureSpeechRecognition.initialize(
       '9ISZZVKrmjoj7OhMA8ZxoTkHVd6aZBqJj6qtOUGMmBFOB5l72SJFJQQJ99AKACYeBjFXJ3w3AAAYACOGv9Xp',
-      'eastus',
-      lang: 'en-US',
+      // 'eastus',
+      'https://eastus.stt.speech.microsoft.com/speech/recognition/conversation/cognitiveservices/v1',
+      lang: 'ar-QA',
       timeout: '1500',
     );
 
@@ -38,7 +39,7 @@ class _ContinuousRecognitionScreenState
     _azureSpeechRecognition.setFinalTranscription((text) {
       if (text.isEmpty) return;
       setState(() {
-        _recognizedText += " $text";
+        _recognizedText += " $text\n\n";
         _intermediateResult = '';
       });
     });

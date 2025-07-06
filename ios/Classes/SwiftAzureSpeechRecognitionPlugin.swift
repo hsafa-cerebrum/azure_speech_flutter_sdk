@@ -321,7 +321,8 @@ public class SwiftAzureSpeechRecognitionPlugin: NSObject, FlutterPlugin {
                 print("Failed to setup AVAudioSession: \(error)")
             }
 
-            let speechConfig = try! SPXSpeechConfiguration(subscription: speechSubscriptionKey, region: serviceRegion)
+//             let speechConfig = try! SPXSpeechConfiguration(subscription: speechSubscriptionKey, region: serviceRegion)
+            let speechConfig = try! SPXSpeechConfiguration(endpoint: serviceRegion, subscription: speechSubscriptionKey)
             speechConfig.speechRecognitionLanguage = lang
 
             let audioConfig = SPXAudioConfiguration() // default mic input
@@ -340,7 +341,8 @@ public class SwiftAzureSpeechRecognitionPlugin: NSObject, FlutterPlugin {
                 let speaker = evt.result?.speakerId ?? "(unknown)"
                 print("final transcription: \(text) [\(speaker)]")
                 let payload = ["text": text, "speaker": speaker]
-                self.azureChannel.invokeMethod("speech.onFinalResponse", arguments: "final transcription: \(text) [\(speaker)]")
+                self.azureChannel.invokeMethod("speech.onFinalResponse", arguments: "[\(speaker)]: \(text) ")
+//                 self.azureChannel.invokeMethod("speech.onFinalResponse", arguments: "final transcription: \(text) [\(speaker)]")
             }
 
             transcriber?.addSessionStartedEventHandler { _, _ in
