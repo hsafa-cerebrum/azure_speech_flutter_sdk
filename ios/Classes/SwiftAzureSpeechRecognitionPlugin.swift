@@ -285,7 +285,11 @@ public class SwiftAzureSpeechRecognitionPlugin: NSObject, FlutterPlugin {
             transcriber.addTranscribedEventHandler({reco, evt in
                 let result = evt.result
                 print("final transcription result: \(result?.text ?? "(no result)") speakerid: \(result?.speakerId ?? "(no result)")")
-                self.azureChannel.invokeMethod("speech.onFinalResponseWithSpeaker", arguments: "final transcription result: \(result?.text ?? "(no result)") speakerid: \(result?.speakerId ?? "(no result)")")
+                // self.azureChannel.invokeMethod("speech.onFinalResponseWithSpeaker", arguments: "final transcription result: \(result?.text ?? "(no result)") speakerid: \(result?.speakerId ?? "(no result)")")
+                self.azureChannel.invokeMethod("speech.onFinalResponseWithSpeaker", arguments: [
+                    "text": result?.text ?? "(no result)",
+                    "speakerId": result?.speakerId ?? "(no result)"
+                ])
                 // self.updateLabel(text: (evt.result?.text)! + "\nspeakerId:" + (evt.result?.speakerId)!, color: .gray)
             })
             print("Listening...")
