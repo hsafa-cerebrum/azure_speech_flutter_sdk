@@ -13,8 +13,7 @@ struct SimpleRecognitionTask {
 public class SwiftAzureSpeechRecognitionPlugin: NSObject, FlutterPlugin {
     var azureChannel: FlutterMethodChannel
     var continousListeningStarted: Bool = false
-    // var continousSpeechRecognizer: SPXSpeechRecognizer? = nil
-    var continousSpeechRecognizer: SPXConversationTranscriber? = nil
+    var continousSpeechRecognizer: SPXSpeechRecognizer? = nil
     var simpleRecognitionTasks: Dictionary<String, SimpleRecognitionTask> = [:]
     var transcriber: SPXConversationTranscriber? = nil
     var audioConfig: SPXAudioConfiguration? = nil
@@ -270,53 +269,28 @@ public class SwiftAzureSpeechRecognitionPlugin: NSObject, FlutterPlugin {
             
             let audioConfig = SPXAudioConfiguration()
 
-            continousSpeechRecognizer = try! SPXConversationTranscriber(speechConfiguration: speechConfig, audioConfiguration: audioConfig)
-            continousSpeechRecognizer!.addRecognizingEventHandler() {reco, evt in
-                print("final transcription result: \(result?.text ?? "(no result)") speakerid: \(result?.speakerId ?? "(no result)")")
-                self.azureChannel.invokeMethod("speech.onSpeech", arguments: evt.result.text)
-            }
-            continousSpeechRecognizer!.addRecognizedEventHandler({reco, evt in
-                let res = evt.result?.speakerId
-                print("final result \(res!)")
-                self.azureChannel.invokeMethod("speech.onFinalResponse", arguments: res)
-            })
-
             let transcriber = try! SPXConversationTranscriber(speechConfiguration: speechConfig, audioConfiguration: audioConfig)
 
             transcriber.addTranscribedEventHandler({reco, evt in
                 let result = evt.result
                 print("final transcription result: \(result?.text ?? "(no result)") speakerid: \(result?.speakerId ?? "(no result)")")
-                // self.azureChannel.invokeMethod("speech.onFinalResponseWithSpeaker", arguments: "final transcription result: \(result?.text ?? "(no result)") speakerid: \(result?.speakerId ?? "(no result)")")
-                self.azureChannel.invokeMethod("speech.onFinalResponseWithSpeaker", arguments: [
-                    "text": result?.text ?? "(no result)",
-                    "speakerId": result?.speakerId ?? "(no result)"
-                ])
+                self.azureChannel.invokeMethod("speech.onFinalResponse", arguments: "final transcription result: \(result?.text ?? "(no result)") speakerid: \(result?.speakerId ?? "(no result)")")
+                
                 // self.updateLabel(text: (evt.result?.text)! + "\nspeakerId:" + (evt.result?.speakerId)!, color: .gray)
             })
             
-            // continousSpeechRecognizer = try! SPXSpeechRecognizer(speechConfiguration: speechConfig, audioConfiguration: audioConfig)
-            // continousSpeechRecognizer!.addRecognizingEventHandler() {reco, evt in
-            //     print("intermediate recognition result: \(evt.result.text ?? "(no result)")")
-            //     self.azureChannel.invokeMethod("speech.onSpeech", arguments: evt.result.text)
-            // }
-            // continousSpeechRecognizer!.addRecognizedEventHandler({reco, evt in
-            //     let res = evt.result.text
-            //     print("final result \(res!)")
-            //     self.azureChannel.invokeMethod("speech.onFinalResponse", arguments: res)
-            // })
+            continousSpeechRecognizer = try! SPXSpeechRecognizer(speechConfiguration: speechConfig, audioConfiguration: audioConfig)
+            continousSpeechRecognizer!.addRecognizingEventHandler() {reco, evt in
+                print("intermediate recognition result: \(evt.result.text ?? "(no result)")")
+                self.azureChannel.invokeMethod("speech.onSpeech", arguments: evt.result.text)
+            }
+            continousSpeechRecognizer!.addRecognizedEventHandler({reco, evt in
+                let res = evt.result.text
+                print("final result \(res!)")
+                //self.azureChannel.invokeMethod("speech.onFinalResponse", arguments: res)
+            })
 
-            // let transcriber = try! SPXConversationTranscriber(speechConfiguration: speechConfig, audioConfiguration: audioConfig)
-
-            // transcriber.addTranscribedEventHandler({reco, evt in
-            //     let result = evt.result
-            //     print("final transcription result: \(result?.text ?? "(no result)") speakerid: \(result?.speakerId ?? "(no result)")")
-            //     // self.azureChannel.invokeMethod("speech.onFinalResponseWithSpeaker", arguments: "final transcription result: \(result?.text ?? "(no result)") speakerid: \(result?.speakerId ?? "(no result)")")
-            //     self.azureChannel.invokeMethod("speech.onFinalResponseWithSpeaker", arguments: [
-            //         "text": result?.text ?? "(no result)",
-            //         "speakerId": result?.speakerId ?? "(no result)"
-            //     ])
-            //     // self.updateLabel(text: (evt.result?.text)! + "\nspeakerId:" + (evt.result?.speakerId)!, color: .gray)
-            // })
+            
             print("Listening...")
             try! continousSpeechRecognizer!.startContinuousRecognition()
             self.azureChannel.invokeMethod("speech.onRecognitionStarted", arguments: nil)
