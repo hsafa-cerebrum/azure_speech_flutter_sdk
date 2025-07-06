@@ -237,80 +237,17 @@ public class SwiftAzureSpeechRecognitionPlugin: NSObject, FlutterPlugin {
         }
     }
     
-    // private func continuousStream(speechSubscriptionKey : String, serviceRegion : String, lang: String) {
-    //     if (continousListeningStarted) {
-    //         print("Stopping continous recognition")
-    //         do {
-    //             try continousSpeechRecognizer!.stopContinuousRecognition()
-    //             self.azureChannel.invokeMethod("speech.onRecognitionStopped", arguments: nil)
-    //             continousSpeechRecognizer = nil
-    //             continousListeningStarted = false
-    //         }
-    //         catch {
-    //             print("Error occurred stopping continous recognition")
-    //         }
-    //     }
-    //     else {
-    //         print("Starting continous recognition")
-    //         do {
-    //             let audioSession = AVAudioSession.sharedInstance()
-    //             // Request access to the microphone
-    //             try audioSession.setCategory(AVAudioSession.Category.record, mode: AVAudioSession.Mode.default, options: AVAudioSession.CategoryOptions.allowBluetooth)
-    //             try audioSession.setActive(true)
-    //             print("Setting custom audio session")
-    //         }
-    //         catch {
-    //             print("An unexpected error occurred")
-    //         }
-            
-    //         let speechConfig = try! SPXSpeechConfiguration(subscription: speechSubscriptionKey, region: serviceRegion)
-            
-    //         speechConfig.speechRecognitionLanguage = lang
-            
-    //         let audioConfig = SPXAudioConfiguration()
-            
-    //         continousSpeechRecognizer = try! SPXSpeechRecognizer(speechConfiguration: speechConfig, audioConfiguration: audioConfig)
-    //         continousSpeechRecognizer!.addRecognizingEventHandler() {reco, evt in
-    //             print("intermediate recognition result: \(evt.result.text ?? "(no result)")")
-    //             self.azureChannel.invokeMethod("speech.onSpeech", arguments: evt.result.text)
-    //         }
-    //         continousSpeechRecognizer!.addRecognizedEventHandler({reco, evt in
-    //             let res = evt.result.text
-    //             print("final result \(res!)")
-    //             self.azureChannel.invokeMethod("speech.onFinalResponse", arguments: res)
-    //         })
-
-    //         let transcriber = try! SPXConversationTranscriber(speechConfiguration: speechConfig, audioConfiguration: audioConfig)
-
-    //         transcriber.addTranscribedEventHandler({reco, evt in
-    //             let result = evt.result
-    //             print("final transcription result: \(result?.text ?? "(no result)") speakerid: \(result?.speakerId ?? "(no result)")")
-    //             // self.azureChannel.invokeMethod("speech.onFinalResponseWithSpeaker", arguments: "final transcription result: \(result?.text ?? "(no result)") speakerid: \(result?.speakerId ?? "(no result)")")
-    //             self.azureChannel.invokeMethod("speech.onFinalResponseWithSpeaker", arguments: [
-    //                 "text": result?.text ?? "(no result)",
-    //                 "speakerId": result?.speakerId ?? "(no result)"
-    //             ])
-    //             // self.updateLabel(text: (evt.result?.text)! + "\nspeakerId:" + (evt.result?.speakerId)!, color: .gray)
-    //         })
-    //         print("Listening...")
-    //         try! continousSpeechRecognizer!.startContinuousRecognition()
-    //         self.azureChannel.invokeMethod("speech.onRecognitionStarted", arguments: nil)
-    //         continousListeningStarted = true
-    //     }
-    // }
-
     private func continuousStream(speechSubscriptionKey : String, serviceRegion : String, lang: String) {
         if (continousListeningStarted) {
             print("Stopping continous recognition")
             do {
-                // Stop the conversation transcriber instead of speech recognizer
-                try continousConversationTranscriber!.stopTranscribingAsync().get()
+                try continousSpeechRecognizer!.stopContinuousRecognition()
                 self.azureChannel.invokeMethod("speech.onRecognitionStopped", arguments: nil)
-                continousConversationTranscriber = nil
+                continousSpeechRecognizer = nil
                 continousListeningStarted = false
             }
             catch {
-                print("Error occurred stopping continous recognition: \(error)")
+                print("Error occurred stopping continous recognition")
             }
         }
         else {
@@ -323,62 +260,45 @@ public class SwiftAzureSpeechRecognitionPlugin: NSObject, FlutterPlugin {
                 print("Setting custom audio session")
             }
             catch {
-                print("An unexpected error occurred setting up audio session: \(error)")
+                print("An unexpected error occurred")
             }
             
             let speechConfig = try! SPXSpeechConfiguration(subscription: speechSubscriptionKey, region: serviceRegion)
+            
             speechConfig.speechRecognitionLanguage = lang
             
             let audioConfig = SPXAudioConfiguration()
+            
+            continousSpeechRecognizer = try! SPXSpeechRecognizer(speechConfiguration: speechConfig, audioConfiguration: audioConfig)
+            continousSpeechRecognizer!.addRecognizingEventHandler() {reco, evt in
+                print("intermediate recognition result: \(evt.result.text ?? "(no result)")")
+                self.azureChannel.invokeMethod("speech.onSpeech", arguments: evt.result.text)
+            }
+            continousSpeechRecognizer!.addRecognizedEventHandler({reco, evt in
+                let res = evt.result.text
+                print("final result \(res!)")
+                self.azureChannel.invokeMethod("speech.onFinalResponse", arguments: res)
+            })
 
             let transcriber = try! SPXConversationTranscriber(speechConfiguration: speechConfig, audioConfiguration: audioConfig)
 
-            // Handle final transcription results with speaker ID
             transcriber.addTranscribedEventHandler({reco, evt in
                 let result = evt.result
                 print("final transcription result: \(result?.text ?? "(no result)") speakerid: \(result?.speakerId ?? "(no result)")")
-                self.azureChannel.invokeMethod("speech.onFinalResponse", arguments: "final transcription result: \(result?.text ?? "(no result)") speakerid: \(result?.speakerId ?? "(no result)")")
+                // self.azureChannel.invokeMethod("speech.onFinalResponseWithSpeaker", arguments: "final transcription result: \(result?.text ?? "(no result)") speakerid: \(result?.speakerId ?? "(no result)")")
+                self.azureChannel.invokeMethod("speech.onFinalResponseWithSpeaker", arguments: [
+                    "text": result?.text ?? "(no result)",
+                    "speakerId": result?.speakerId ?? "(no result)"
+                ])
+                // self.updateLabel(text: (evt.result?.text)! + "\nspeakerId:" + (evt.result?.speakerId)!, color: .gray)
             })
-            
-            // Handle intermediate transcription results
-            transcriber.addTranscribingEventHandler({reco, evt in
-                print("intermediate recognition result: \(evt.result.text ?? "(no result)")")
-                self.azureChannel.invokeMethod("speech.onSpeech", arguments: evt.result.text)
-            })
-            
-            // Handle session started event
-            transcriber.addSessionStartedEventHandler({reco, evt in
-                print("Transcription session started")
-            })
-            
-            // Handle session stopped event
-            transcriber.addSessionStoppedEventHandler({reco, evt in
-                print("Transcription session stopped")
-            })
-            
-            // Handle canceled event (for errors)
-            transcriber.addCanceledEventHandler({reco, evt in
-                print("Transcription canceled: \(evt.reason)")
-                if evt.reason == SPXCancellationReason.error {
-                    print("Error details: \(evt.errorDetails ?? "No error details")")
-                }
-            })
-            
-            // Store the transcriber reference
-            continousConversationTranscriber = transcriber
-            
             print("Listening...")
-            do {
-                try transcriber.startTranscribingAsync().get()
-                self.azureChannel.invokeMethod("speech.onRecognitionStarted", arguments: nil)
-                continousListeningStarted = true
-            }
-            catch {
-                print("Error starting transcription: \(error)")
-            }
+            try! continousSpeechRecognizer!.startContinuousRecognition()
+            self.azureChannel.invokeMethod("speech.onRecognitionStarted", arguments: nil)
+            continousListeningStarted = true
         }
     }
-
+    
     private func continuousStreamWithAssessment(referenceText: String, phonemeAlphabet: String, granularity: SPXPronunciationAssessmentGranularity, enableMiscue: Bool, speechSubscriptionKey : String, serviceRegion : String, lang: String, nBestPhonemeCount: Int?) {
         print("Continuous recognition started: \(continousListeningStarted)")
         if (continousListeningStarted) {
