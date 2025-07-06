@@ -1,6 +1,5 @@
 import 'package:azure_speech_recognition_null_safety/azure_speech_recognition_null_safety.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 class ContinuousRecognitionScreen extends StatefulWidget {
   @override
@@ -22,8 +21,8 @@ class _ContinuousRecognitionScreenState
     super.initState();
 
     AzureSpeechRecognition.initialize(
-      dotenv.get('AZURE_KEY'),
-      dotenv.get('AZURE_REGION'),
+      '9ISZZVKrmjoj7OhMA8ZxoTkHVd6aZBqJj6qtOUGMmBFOB5l72SJFJQQJ99AKACYeBjFXJ3w3AAAYACOGv9Xp',
+      'eastus',
       lang: 'en-US',
       timeout: '1500',
     );
@@ -47,6 +46,8 @@ class _ContinuousRecognitionScreenState
     // Handles diarized speaker result
     _azureSpeechRecognition.setSpeakerDiarizationHandler((speakerTaggedText) {
       if (speakerTaggedText.isEmpty) return;
+
+
       setState(() {
         _recognizedText += "\n$speakerTaggedText";
         _intermediateResult = '';

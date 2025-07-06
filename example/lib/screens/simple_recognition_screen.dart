@@ -1,6 +1,6 @@
 import 'package:azure_speech_recognition_null_safety/azure_speech_recognition_null_safety.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart';
+
 import 'dart:math';
 
 class SimpleRecognitionScreen extends StatefulWidget {
@@ -13,8 +13,10 @@ class _SimpleRecognitionScreenState extends State<SimpleRecognitionScreen>
     with SingleTickerProviderStateMixin {
   String _centerText = 'Unknown';
   late AzureSpeechRecognition _speechAzure;
-  String subKey = dotenv.get("AZURE_KEY");
-  String region = dotenv.get('AZURE_REGION');
+  //'9ISZZVKrmjoj7OhMA8ZxoTkHVd6aZBqJj6qtOUGMmBFOB5l72SJFJQQJ99AKACYeBjFXJ3w3AAAYACOGv9Xp',
+  //       'eastus',
+  String subKey = '9ISZZVKrmjoj7OhMA8ZxoTkHVd6aZBqJj6qtOUGMmBFOB5l72SJFJQQJ99AKACYeBjFXJ3w3AAAYACOGv9Xp';
+  String region = 'eastus';
   String lang = "en-US";
   String timeout = "2000";
   bool isRecording = false;

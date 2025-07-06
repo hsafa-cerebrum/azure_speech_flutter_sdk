@@ -279,6 +279,15 @@ public class SwiftAzureSpeechRecognitionPlugin: NSObject, FlutterPlugin {
                 print("final result \(res!)")
                 self.azureChannel.invokeMethod("speech.onFinalResponse", arguments: res)
             })
+
+            let transcriber = try! SPXConversationTranscriber(speechConfiguration: speechConfig, audioConfiguration: audioConfig)
+
+            transcriber.addTranscribedEventHandler({reco, evt in
+                let result = evt.result
+                print("final transcription result: \(result?.text ?? "(no result)") speakerid: \(result?.speakerId ?? "(no result)")")
+                self.azureChannel.invokeMethod("speech.onFinalResponseWithSpeaker", arguments: "final transcription result: \(result?.text ?? "(no result)") speakerid: \(result?.speakerId ?? "(no result)")")
+                // self.updateLabel(text: (evt.result?.text)! + "\nspeakerId:" + (evt.result?.speakerId)!, color: .gray)
+            })
             print("Listening...")
             try! continousSpeechRecognizer!.startContinuousRecognition()
             self.azureChannel.invokeMethod("speech.onRecognitionStarted", arguments: nil)
@@ -345,12 +354,12 @@ public class SwiftAzureSpeechRecognitionPlugin: NSObject, FlutterPlugin {
 
                 let transcriber = try! SPXConversationTranscriber(speechConfiguration: speechConfig, audioConfiguration: audioConfig)
 
-                transcriber!.addTranscribedEventHandler() {reco, evt in
+                transcriber.addTranscribedEventHandler({reco, evt in
                     let result = evt.result
                     print("final transcription result: \(result?.text ?? "(no result)") speakerid: \(result?.speakerId ?? "(no result)")")
                     self.azureChannel.invokeMethod("speech.onFinalResponseWithSpeaker", arguments: "final transcription result: \(result?.text ?? "(no result)") speakerid: \(result?.speakerId ?? "(no result)")")
                     // self.updateLabel(text: (evt.result?.text)! + "\nspeakerId:" + (evt.result?.speakerId)!, color: .gray)
-                }
+                })
 
                 print("Listening...")
                 try continousSpeechRecognizer!.startContinuousRecognition()
