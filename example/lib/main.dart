@@ -36,7 +36,7 @@ class _MyAppState extends State<MyApp> {
     return MaterialApp(
       routes: {
         '/': (context) => HomeScreen(),
-        '/simple': (context) => SimpleRecognitionScreen(),
+        //'/simple': (context) => SimpleRecognitionScreen(),
         '/continuous': (context) => ContinuousRecognitionScreen(),
       },
     );

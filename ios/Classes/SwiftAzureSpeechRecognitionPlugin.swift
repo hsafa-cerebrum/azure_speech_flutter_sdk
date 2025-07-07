@@ -339,10 +339,27 @@ public class SwiftAzureSpeechRecognitionPlugin: NSObject, FlutterPlugin {
             transcriber?.addTranscribedEventHandler { _, evt in
                 let text = evt.result?.text ?? "(no result)"
                 let speaker = evt.result?.speakerId ?? "(unknown)"
+                let duration = evt.result?.duration ?? 0
+                let offset = evt.result?.offset ?? 0
+
+                let ticksToSeconds = 1.0 / 10_000_000.0
+                let startSeconds = Double(offset) * ticksToSeconds
+                let durationSeconds = Double(duration) * ticksToSeconds
+                let endSeconds = startSeconds + durationSeconds
+
+                func formatTime(_ seconds: Double) -> String {
+                    let minutes = Int(seconds) / 60
+                    let secs = Int(seconds) % 60
+                    return String(format: "%02d:%02d", minutes, secs)
+                }
+
+//                 let timeRange = "[\(formatTime(startSeconds)) - \(formatTime(endSeconds))]"
+                let timeRange = "[\(formatTime(endSeconds)) - \(formatTime(startSeconds))]"
+
                 print("final transcription: \(text) [\(speaker)]")
-                let payload = ["text": text, "speaker": speaker]
-                self.azureChannel.invokeMethod("speech.onFinalResponse", arguments: "[\(speaker)]: \(text) ")
-//                 self.azureChannel.invokeMethod("speech.onFinalResponse", arguments: "final transcription: \(text) [\(speaker)]")
+
+                //let payload = ["text": text, "speaker": speaker]
+                self.azureChannel.invokeMethod("speech.onFinalResponse", arguments: "[\(speaker)]:::\(text):::\(duration):::\(offset):::\(timeRange)")
             }
 
             transcriber?.addSessionStartedEventHandler { _, _ in
